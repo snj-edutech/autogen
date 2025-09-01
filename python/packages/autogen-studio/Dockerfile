@@ -67,7 +67,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /work/autogen
 
 # Copy the repo contents
-COPY . .
+COPY . /work/autogen
 
 # ---------- App defaults (overridable at runtime) ----------
 ENV AUTOGENSTUDIO_APPDIR=/work/auto-gen-app-data \
