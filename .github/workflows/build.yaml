@@ -1,0 +1,102 @@
+name: Development Build and Deploy
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  development-build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      TAG_NAME: ${{ github.ref_name }}
+      ENV: "development"
+      EPORT: 14080
+      PORT: 8080
+      IMAGE_NAME: "autogen-dev"
+      SERVICE: "autogen"
+      CONTAINER_NAME: "autogen-dev-container"
+      SAVE_PATH: "/home/soulloan/autogen-dev-resources"
+    permissions:
+      id-token: write   # This is required for requesting the JWT
+      contents: read    # This is required for actions/checkout
+
+    steps:
+      - name: Checkout code with Git LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install and setup Git LFS
+        run: |
+          git lfs install
+          git lfs fetch --all
+          git lfs checkout
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f ./python/packages/autogen-studio/Dockerfile \
+            --build-arg PORT=${PORT} \
+            --platform linux/amd64 \
+            -t "$IMAGE_NAME:$TAG_NAME" \
+            --build-arg openai_api_key=${{ secrets.OPENAI_KEY }} \
+            .
+        env:
+          DOCKER_BUILDKIT: 1
+          DOCKER_CLI_EXPERIMENTAL: enabled
+
+      - name: Save Docker image as a tarball
+        run: |
+          docker save "${IMAGE_NAME}:${TAG_NAME}" -o "${IMAGE_NAME}_${TAG_NAME}.tar"
+          chmod 644 "${IMAGE_NAME}_${TAG_NAME}.tar"
+          docker images
+          ls -al
+
+      - name: Copy file via SSH key
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "${{ env.IMAGE_NAME }}_${{ env.TAG_NAME }}.tar"
+          target: "${{ env.SAVE_PATH }}"
+          overwrite: true
+
+      - name: Executing remote SSH commands
+        uses: appleboy/ssh-action@v1.1.0
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          TAG_NAME: ${{ env.TAG_NAME }}
+          SAVE_PATH: ${{ env.SAVE_PATH }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          PORT: ${{ env.PORT }}
+          EPORT: ${{ env.EPORT }}
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: IMAGE_NAME,TAG_NAME,SAVE_PATH,CONTAINER_NAME,PORT,EPORT
+          script: |
+            docker stop ${CONTAINER_NAME} || true  # Stop the existing container (if running)
+            docker rm ${CONTAINER_NAME} || true  # Remove the existing container (if exists)
+            docker rmi "${IMAGE_NAME}:${TAG_NAME}" || true  # Remove existing image if it exists
+            docker load -i "${SAVE_PATH}/${IMAGE_NAME}_${TAG_NAME}.tar"  # Load the image on the server
+            docker run -d \
+              --privileged \
+              -v ~/.ssh:/root/.ssh \
+              -v ~/.claude:/root/.claude \
+              -v ~/.claude.json:/root/.claude.json \
+              -v /home/soulloan/work/auto-gen-app-data:/work/auto-gen-app-data \
+              -v /home/soulloan/work/auto-gen-app-data/var/lib/docker:/var/lib/docker \
+              -v /home/soulloan/work/autogen:/work/autogen \
+              -p "${EPORT}:${PORT}" \
+              --restart always \
+              --name ${CONTAINER_NAME} \
+              "${IMAGE_NAME}:${TAG_NAME}"
