@@ -159,7 +159,7 @@ RUN printf '%s\n' \
     'echo "==============================================="' \
     '' \
     '# Execute autogen entry point' \
-    'exec /bin/bash -lc "/work/autogen/python/packages/autogen-studio/entrypoint.sh"' \
+    'exec /bin/bash -lc "bash /work/autogen/python/packages/autogen-studio/entrypoint.sh"' \
     > /entrypoint.sh && chmod +x /entrypoint.sh
 
 # --- Node via NVM (for Gatsby UI build) ---
