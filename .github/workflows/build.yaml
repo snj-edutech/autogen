@@ -95,7 +95,6 @@ jobs:
               -v ~/.claude.json:/root/.claude.json \
               -v /home/soulloan/work/auto-gen-app-data:/work/auto-gen-app-data \
               -v /home/soulloan/work/auto-gen-app-data/var/lib/docker:/var/lib/docker \
-              -v /home/soulloan/work/autogen:/work/autogen \
               -p "${EPORT}:${PORT}" \
               --restart always \
               --name ${CONTAINER_NAME} \
